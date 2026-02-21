@@ -1,0 +1,404 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Virtual Try-On — Nano Banana</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #0f0f11;
+      --surface: #1a1a1f;
+      --surface-hover: #24242b;
+      --border: #2e2e38;
+      --accent: #a78bfa;
+      --accent-glow: rgba(167, 139, 250, .25);
+      --text: #e4e4e7;
+      --text-muted: #9191a0;
+      --danger: #f87171;
+      --radius: 14px;
+    }
+
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+
+    header {
+      width: 100%;
+      padding: 28px 32px;
+      text-align: center;
+      border-bottom: 1px solid var(--border);
+    }
+    header h1 { font-size: 1.6rem; font-weight: 700; letter-spacing: -0.02em; }
+    header h1 span { color: var(--accent); }
+    header p { margin-top: 6px; color: var(--text-muted); font-size: .9rem; }
+
+    main { width: 100%; max-width: 960px; padding: 40px 24px 80px; }
+
+    .section-label {
+      font-weight: 700;
+      font-size: .95rem;
+      margin-bottom: 12px;
+    }
+
+    /* ── Shared drop-zone styles ── */
+    .drop-zone {
+      background: var(--surface);
+      border: 2px dashed var(--border);
+      border-radius: var(--radius);
+      padding: 32px 20px;
+      text-align: center;
+      cursor: pointer;
+      transition: border-color .2s, background .2s, box-shadow .2s;
+      position: relative;
+      overflow: hidden;
+      margin-bottom: 28px;
+    }
+    .drop-zone:hover {
+      border-color: var(--accent);
+      background: var(--surface-hover);
+    }
+    .drop-zone.drag-over {
+      border-color: var(--accent);
+      border-style: solid;
+      background: rgba(167, 139, 250, .08);
+      box-shadow: inset 0 0 0 2px var(--accent-glow), 0 0 24px var(--accent-glow);
+    }
+    .drop-zone.has-file,
+    .drop-zone.has-files {
+      border-style: solid;
+      border-color: var(--accent);
+    }
+    .drop-zone .icon { font-size: 2.4rem; margin-bottom: 10px; }
+    .drop-zone .label { font-weight: 600; font-size: .95rem; }
+    .drop-zone .hint { color: var(--text-muted); font-size: .8rem; margin-top: 6px; }
+    .drop-zone .browse-link {
+      color: var(--accent);
+      text-decoration: underline;
+      cursor: pointer;
+    }
+
+    /* ── Person upload ── */
+    .drop-zone .preview-img {
+      max-width: 100%; max-height: 220px; border-radius: 8px; margin-top: 12px; display: none;
+    }
+    .drop-zone.has-file .preview-img { display: block; }
+    .drop-zone.has-file .icon,
+    .drop-zone.has-file .hint { display: none; }
+
+    /* ── Outfit pieces ── */
+    .outfit-thumbs {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      margin-top: 16px;
+      margin-bottom: 28px;
+    }
+    .outfit-thumb {
+      position: relative;
+      width: 100px;
+      height: 100px;
+      border-radius: 10px;
+      overflow: hidden;
+      border: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+    .outfit-thumb img { width: 100%; height: 100%; object-fit: cover; }
+    .outfit-thumb .remove-btn {
+      position: absolute; top: 4px; right: 4px;
+      width: 22px; height: 22px;
+      background: rgba(0,0,0,.7);
+      color: #fff; border: none; border-radius: 50%;
+      font-size: .75rem; cursor: pointer;
+      display: flex; align-items: center; justify-content: center; line-height: 1;
+    }
+    .outfit-thumb .remove-btn:hover { background: var(--danger); }
+    .outfit-thumb .piece-label {
+      position: absolute; bottom: 0; left: 0; right: 0;
+      background: rgba(0,0,0,.65); color: #fff;
+      font-size: .65rem; padding: 3px 6px;
+      text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+
+    .piece-count {
+      font-size: .82rem;
+      color: var(--text-muted);
+      margin-bottom: 20px;
+    }
+
+    /* ── Button / result ── */
+    .generate-btn {
+      width: 100%; padding: 16px; font-size: 1rem; font-weight: 700; font-family: inherit;
+      background: var(--accent); color: #111; border: none; border-radius: 10px;
+      cursor: pointer; transition: opacity .2s, transform .1s;
+    }
+    .generate-btn:hover { opacity: .9; }
+    .generate-btn:active { transform: scale(.98); }
+    .generate-btn:disabled { opacity: .4; cursor: not-allowed; }
+
+    .result-section { margin-top: 40px; display: none; }
+    .result-section.visible { display: block; }
+    .result-section h2 { font-size: 1.15rem; font-weight: 700; margin-bottom: 16px; }
+    .result-image { width: 100%; border-radius: var(--radius); border: 1px solid var(--border); }
+    .result-meta { margin-top: 10px; font-size: .82rem; color: var(--text-muted); }
+    .download-btn {
+      display: inline-block; margin-top: 16px; padding: 12px 28px;
+      font-size: .9rem; font-weight: 600; font-family: inherit;
+      background: var(--accent); color: #111; border: none; border-radius: 10px;
+      cursor: pointer; text-decoration: none; transition: opacity .2s;
+    }
+    .download-btn:hover { opacity: .85; }
+
+    .error-banner {
+      background: rgba(248, 113, 113, .12); border: 1px solid var(--danger);
+      color: var(--danger); padding: 14px 18px; border-radius: 10px;
+      font-size: .88rem; margin-top: 20px; display: none;
+    }
+    .error-banner.visible { display: block; }
+
+    .spinner {
+      display: none; margin: 30px auto 0; width: 40px; height: 40px;
+      border: 4px solid var(--border); border-top-color: var(--accent);
+      border-radius: 50%; animation: spin .7s linear infinite;
+    }
+    .spinner.visible { display: block; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    @media (max-width: 600px) {
+      .outfit-thumb { width: 80px; height: 80px; }
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>Virtual Try-On &middot; <span>Nano Banana</span></h1>
+  <p>Upload a photo of yourself and your outfit pieces to see them on you</p>
+</header>
+
+<main>
+  <form id="tryonForm">
+
+    <p class="section-label">Your Photo</p>
+    <div class="drop-zone" id="personCard">
+      <div class="icon">🧑</div>
+      <div class="label">Drag & drop your photo here</div>
+      <div class="hint">or <span class="browse-link">browse</span> &middot; PNG, JPG, WEBP &middot; up to 16 MB</div>
+      <img class="preview-img" id="personPreview" alt="Person preview">
+      <input type="file" name="person_image" id="personInput" accept="image/png,image/jpeg,image/webp" hidden>
+    </div>
+
+    <p class="section-label">Outfit Pieces</p>
+    <div class="drop-zone" id="outfitZone">
+      <div class="icon">👗👟🧢</div>
+      <div class="label">Drag & drop outfit pieces here</div>
+      <div class="hint">or <span class="browse-link">browse</span> &middot; Top, bottom, shoes, accessories &middot; up to 13 pieces</div>
+      <input type="file" id="outfitInput" accept="image/png,image/jpeg,image/webp" multiple hidden>
+    </div>
+    <p class="piece-count" id="pieceCount"></p>
+    <div class="outfit-thumbs" id="outfitThumbs"></div>
+
+    <button type="submit" class="generate-btn" id="generateBtn">Generate Try-On</button>
+  </form>
+
+  <div class="spinner" id="spinner"></div>
+  <div class="error-banner" id="errorBanner"></div>
+
+  <div class="result-section" id="resultSection">
+    <h2>Result</h2>
+    <img class="result-image" id="resultImage" alt="Generated try-on result">
+    <p class="result-meta" id="resultMeta"></p>
+    <a class="download-btn" id="downloadBtn" href="#" download>Download Image</a>
+  </div>
+</main>
+
+<script>
+  const ALLOWED = new Set(['image/png', 'image/jpeg', 'image/webp']);
+
+  const form          = document.getElementById('tryonForm');
+  const personInput   = document.getElementById('personInput');
+  const personCard    = document.getElementById('personCard');
+  const personPreview = document.getElementById('personPreview');
+  const outfitInput   = document.getElementById('outfitInput');
+  const outfitZone    = document.getElementById('outfitZone');
+  const outfitThumbs  = document.getElementById('outfitThumbs');
+  const pieceCount    = document.getElementById('pieceCount');
+  const spinner       = document.getElementById('spinner');
+  const errorBanner   = document.getElementById('errorBanner');
+  const resultSection = document.getElementById('resultSection');
+  const resultImage   = document.getElementById('resultImage');
+  const resultMeta    = document.getElementById('resultMeta');
+  const generateBtn   = document.getElementById('generateBtn');
+
+  let personFile  = null;
+  let outfitFiles = [];
+
+  /* ── Drag-and-drop helpers ── */
+  function setupDropZone(zone, onDrop) {
+    let dragCounter = 0;
+
+    zone.addEventListener('dragenter', (e) => {
+      e.preventDefault();
+      dragCounter++;
+      zone.classList.add('drag-over');
+    });
+
+    zone.addEventListener('dragleave', (e) => {
+      e.preventDefault();
+      dragCounter--;
+      if (dragCounter <= 0) {
+        dragCounter = 0;
+        zone.classList.remove('drag-over');
+      }
+    });
+
+    zone.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'copy';
+    });
+
+    zone.addEventListener('drop', (e) => {
+      e.preventDefault();
+      dragCounter = 0;
+      zone.classList.remove('drag-over');
+      const files = Array.from(e.dataTransfer.files).filter(f => ALLOWED.has(f.type));
+      if (files.length) onDrop(files);
+    });
+  }
+
+  /* ── Person photo ── */
+  function setPersonFile(file) {
+    personFile = file;
+    personCard.classList.add('has-file');
+    personCard.querySelector('.label').textContent = file.name;
+    const reader = new FileReader();
+    reader.onload = e => { personPreview.src = e.target.result; };
+    reader.readAsDataURL(file);
+  }
+
+  personCard.addEventListener('click', () => personInput.click());
+  personInput.addEventListener('change', () => {
+    if (personInput.files[0]) setPersonFile(personInput.files[0]);
+  });
+  setupDropZone(personCard, (files) => setPersonFile(files[0]));
+
+  /* ── Outfit pieces ── */
+  function addOutfitFiles(files) {
+    for (const f of files) {
+      if (outfitFiles.length >= 13) break;
+      outfitFiles.push(f);
+    }
+    renderOutfitThumbs();
+  }
+
+  outfitZone.addEventListener('click', () => outfitInput.click());
+  outfitInput.addEventListener('change', () => {
+    addOutfitFiles(Array.from(outfitInput.files));
+    outfitInput.value = '';
+  });
+  setupDropZone(outfitZone, addOutfitFiles);
+
+  function renderOutfitThumbs() {
+    outfitThumbs.innerHTML = '';
+    outfitFiles.forEach((file, idx) => {
+      const thumb = document.createElement('div');
+      thumb.className = 'outfit-thumb';
+
+      const img = document.createElement('img');
+      const reader = new FileReader();
+      reader.onload = e => { img.src = e.target.result; };
+      reader.readAsDataURL(file);
+      thumb.appendChild(img);
+
+      const label = document.createElement('div');
+      label.className = 'piece-label';
+      label.textContent = file.name;
+      thumb.appendChild(label);
+
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'remove-btn';
+      btn.textContent = '✕';
+      btn.addEventListener('click', () => {
+        outfitFiles.splice(idx, 1);
+        renderOutfitThumbs();
+      });
+      thumb.appendChild(btn);
+
+      outfitThumbs.appendChild(thumb);
+    });
+
+    const n = outfitFiles.length;
+    if (n > 0) {
+      outfitZone.classList.add('has-files');
+      pieceCount.textContent = `${n} piece${n !== 1 ? 's' : ''} added (up to 13)`;
+    } else {
+      outfitZone.classList.remove('has-files');
+      pieceCount.textContent = '';
+    }
+  }
+
+  /* ── Prevent page-level drops from navigating away ── */
+  document.addEventListener('dragover', e => e.preventDefault());
+  document.addEventListener('drop', e => e.preventDefault());
+
+  /* ── Submit ── */
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    errorBanner.classList.remove('visible');
+    resultSection.classList.remove('visible');
+
+    if (!personFile) {
+      showError('Please upload a photo of yourself.');
+      return;
+    }
+    if (outfitFiles.length === 0) {
+      showError('Please add at least one outfit piece.');
+      return;
+    }
+
+    generateBtn.disabled = true;
+    generateBtn.textContent = 'Generating…';
+    spinner.classList.add('visible');
+
+    const fd = new FormData();
+    fd.append('person_image', personFile);
+    outfitFiles.forEach(f => fd.append('outfit_images', f));
+
+    try {
+      const res = await fetch('/generate', { method: 'POST', body: fd });
+      const data = await res.json();
+
+      if (!res.ok || data.error) {
+        showError(data.error || 'Something went wrong.');
+        return;
+      }
+
+      resultImage.src = data.image_url;
+      document.getElementById('downloadBtn').href = data.download_url;
+      resultMeta.textContent = data.model_text || '';
+      resultSection.classList.add('visible');
+    } catch (err) {
+      showError('Network error — check your connection and try again.');
+    } finally {
+      generateBtn.disabled = false;
+      generateBtn.textContent = 'Generate Try-On';
+      spinner.classList.remove('visible');
+    }
+  });
+
+  function showError(msg) {
+    errorBanner.textContent = msg;
+    errorBanner.classList.add('visible');
+  }
+</script>
+
+</body>
+</html>
