@@ -1,7 +1,7 @@
 import os
 import uuid
 import base64
-from flask import Flask, render_template, request, jsonify, send_from_directory
+from flask import Flask, render_template, request, jsonify, send_from_directory, send_file
 from dotenv import load_dotenv
 from google import genai
 from google.genai import types
@@ -291,6 +291,9 @@ def tryon():
         raw = image_bytes if isinstance(image_bytes, bytes) else base64.b64decode(image_bytes)
         with open(filepath, "wb") as f:
             f.write(raw)
+
+        if request.args.get("raw") == "1":
+            return send_file(filepath, mimetype=mime)
 
         return jsonify({
             "image_url": f"/static/results/{filename}",
